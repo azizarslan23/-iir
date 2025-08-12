@@ -1,26 +1,24 @@
 {
-  "name": "poemshare-backend",
+  "name": "poem-share-backend",
   "version": "1.0.0",
+  "description": "Poem sharing platform backend (Express + Prisma + JWT Auth)",
   "main": "src/index.js",
   "scripts": {
-    "dev": "nodemon --watch src --exec node src/index.js",
+    "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "prisma": "prisma"
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init"
   },
   "dependencies": {
-    "@prisma/client": "^5.0.0",
-    "bcrypt": "^5.1.0",
+    "@prisma/client": "^5.4.0",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
-    "express-rate-limit": "^6.7.0",
-    "helmet": "^6.0.1",
-    "jsonwebtoken": "^9.0.0",
-    "prisma": "^5.0.0",
-    "xss": "^1.0.14",
-    "zod": "^3.22.2"
+    "jsonwebtoken": "^9.0.0"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22"
+    "nodemon": "^3.0.1",
+    "prisma": "^5.4.0"
   }
 }
