@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PoemShare — Şiirlerini Paylaş</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>PoemShare</h1>
+      <p class="tag">Şiirlerini paylaş, yorum al. Hesap onayı gereklidir.</p>
+    </header>
+
+    <main>
+      <section id="auth-section" class="card">
+        <div id="user-info" class="hidden"></div>
+
+        <div id="auth-forms">
+          <div class="form-row">
+            <h2>Giriş</h2>
+            <input id="login-username" placeholder="Kullanıcı adı" />
+            <input id="login-password" type="password" placeholder="Parola" />
+            <button id="btn-login">Giriş</button>
+          </div>
+
+          <hr/>
+
+          <div class="form-row">
+            <h2>Kayıt</h2>
+            <input id="reg-username" placeholder="Kullanıcı adı" />
+            <input id="reg-password" type="password" placeholder="Parola (en az 6)" />
+            <input id="reg-owner-secret" placeholder="(opsiyonel) owner secret" />
+            <button id="btn-register">Kayıt</button>
+          </div>
+        </div>
+
+        <div id="auth-msg" class="muted"></div>
+      </section>
+
+      <section id="create-poem" class="card hidden">
+        <h2>Yeni Şiir Paylaş</h2>
+        <input id="poem-title" placeholder="Başlık" />
+        <textarea id="poem-body" rows="6" placeholder="Şiirin..."></textarea>
+        <div class="row">
+          <button id="btn-create-poem">Paylaş</button>
+        </div>
+        <div id="create-msg" class="muted"></div>
+      </section>
+
+      <section id="poems" class="card">
+        <div class="poems-header">
+          <h2>Şiirler</h2>
+          <div class="controls">
+            <input id="search" placeholder="Ara..." />
+            <button id="btn-refresh">Yenile</button>
+          </div>
+        </div>
+        <div id="poem-list" class="list"></div>
+      </section>
+    </main>
+
+    <footer>
+      <small>Backend: <code>http://localhost:5000</code></small>
+    </footer>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
