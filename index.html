@@ -1,0 +1,395 @@
+/**
+PoemShareApp.jsx
+Single-file React app (Tailwind-ready) for sharing poems.
+Features:
+- Register / Login (username only, persisted in localStorage)
+- Admin (site owner) panel protected by a passphrase to approve accounts
+- Only approved accounts can post poems
+- Comment on poems (any logged-in user)
+- Owner can approve / reject accounts and delete poems/comments
+
+How to use:
+1) Create a new Vite React project or use your existing React app.
+2) Add Tailwind CSS to your project (optional but recommended for styling).
+3) Copy this file into your project (e.g. src/PoemShareApp.jsx) and import it in App.jsx.
+4) Run `npm run dev`.
+
+Note: This implementation is purely frontend (localStorage). For a production site, swap localStorage with a backend and secure auth.
+*/
+
+import React, { useEffect, useState } from "react";
+
+// --- small helpers ---
+const uid = () => Math.random().toString(36).slice(2, 9);
+const now = () => new Date().toISOString();
+
+const STORAGE_KEY = "poemshare_state_v1";
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
+function saveState(state) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+// Default seed state
+function seedState() {
+  const ownerId = uid();
+  const initial = {
+    users: [
+      { id: ownerId, username: "owner", approved: true, isOwner: true },
+      { id: uid(), username: "alice", approved: false, isOwner: false },
+      { id: uid(), username: "ahmet", approved: true, isOwner: false },
+    ],
+    poems: [
+      {
+        id: uid(),
+        authorId: ownerId,
+        title: "Hoşgeldin",
+        body: "Bu site şiirlerinizi paylaşmanız için örnek bir metindir.\nKalbinizi dökün, kelimeleriniz burada kalsın.",
+        createdAt: now(),
+        comments: [
+          { id: uid(), authorId: null, authorName: "Ziyaretçi", text: "Güzel bir başlangıç!", createdAt: now() },
+        ],
+      },
+    ],
+    adminPass: null, // site owner can set on first visit
+  };
+  saveState(initial);
+  return initial;
+}
+
+export default function PoemShareApp() {
+  const [state, setState] = useState(() => loadState() || seedState());
+  const [currentUserId, setCurrentUserId] = useState(() => {
+    const s = localStorage.getItem("poemshare_current_user");
+    return s || null;
+  });
+
+  // UI state
+  const [view, setView] = useState("home");
+  const [form, setForm] = useState({ username: "", title: "", body: "", comment: "" });
+  const [adminSecretInput, setAdminSecretInput] = useState("");
+  const [adminSession, setAdminSession] = useState(false);
+  const [search, setSearch] = useState("");
+
+  // Persist state on changes
+  useEffect(() => saveState(state), [state]);
+  useEffect(() => localStorage.setItem("poemshare_current_user", currentUserId || ""), [currentUserId]);
+
+  // helpers
+  const users = state.users;
+  const poems = state.poems.slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const currentUser = users.find((u) => u.id === currentUserId) || null;
+
+  function register(username) {
+    if (!username || username.trim().length < 2) return alert("Kullanıcı adı en az 2 karakter olmalı.");
+    if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) return alert("Bu kullanıcı adı alınmış.");
+    const newUser = { id: uid(), username: username.trim(), approved: false, isOwner: false };
+    const newState = { ...state, users: [...users, newUser] };
+    setState(newState);
+    setCurrentUserId(newUser.id);
+    alert("Kayıt başarılı! Hesabınız henüz onaylanmadı. Onaylandıktan sonra paylaşım yapabilirsiniz.");
+  }
+
+  function login(username) {
+    const user = users.find((u) => u.username.toLowerCase() === username.toLowerCase());
+    if (!user) return alert("Böyle bir kullanıcı yok. Kayıt olunuz.");
+    setCurrentUserId(user.id);
+    alert(`Hoşgeldin, ${user.username}`);
+  }
+
+  function logout() {
+    setCurrentUserId(null);
+  }
+
+  function createPoem(title, body) {
+    if (!currentUser) return alert("Önce giriş yapmalısın.");
+    if (!currentUser.approved) return alert("Hesabın onaylı değil — paylaşamazsın.");
+    if (!title.trim() || !body.trim()) return alert("Başlık ve gövde boş olamaz.");
+    const newPoem = { id: uid(), authorId: currentUser.id, title: title.trim(), body: body.trim(), createdAt: now(), comments: [] };
+    const newState = { ...state, poems: [newPoem, ...state.poems] };
+    setState(newState);
+    setForm({ ...form, title: "", body: "" });
+    setView("home");
+  }
+
+  function addComment(poemId, text) {
+    if (!currentUser) return alert("Yorum yapmak için giriş yapmalısın.");
+    if (!text.trim()) return;
+    const newComment = { id: uid(), authorId: currentUser.id, authorName: currentUser.username, text: text.trim(), createdAt: now() };
+    const newPoems = state.poems.map((p) => (p.id === poemId ? { ...p, comments: [...p.comments, newComment] } : p));
+    setState({ ...state, poems: newPoems });
+    setForm({ ...form, comment: "" });
+  }
+
+  function deletePoem(poemId) {
+    if (!adminSession && !(currentUser && currentUser.isOwner)) return alert("Yetki yok.");
+    const newPoems = state.poems.filter((p) => p.id !== poemId);
+    setState({ ...state, poems: newPoems });
+  }
+
+  function deleteComment(poemId, commentId) {
+    if (!adminSession && !(currentUser && currentUser.isOwner)) return alert("Yetki yok.");
+    const newPoems = state.poems.map((p) => {
+      if (p.id !== poemId) return p;
+      return { ...p, comments: p.comments.filter((c) => c.id !== commentId) };
+    });
+    setState({ ...state, poems: newPoems });
+  }
+
+  function setAdminPass(pass) {
+    if (!pass || pass.length < 4) return alert("Parola en az 4 karakter olmalı.");
+    setState({ ...state, adminPass: pass });
+    alert("Admin parolası kaydedildi. Artık Yönetici paneline bu parola ile giriş yapabilirsiniz.");
+  }
+
+  function adminLogin(pass) {
+    if (!state.adminPass) return alert("Henüz admin parolası ayarlı değil. Site sahibinin ayarlaması gerekir.");
+    if (pass === state.adminPass) {
+      setAdminSession(true);
+      alert("Yönetici olarak giriş yapıldı.");
+    } else alert("Parola yanlış.");
+  }
+
+  function approveUser(userId, approved) {
+    const newUsers = state.users.map((u) => (u.id === userId ? { ...u, approved } : u));
+    setState({ ...state, users: newUsers });
+  }
+
+  // filter poems by search
+  const filteredPoems = poems.filter((p) => {
+    if (!search.trim()) return true;
+    const s = search.toLowerCase();
+    return p.title.toLowerCase().includes(s) || p.body.toLowerCase().includes(s);
+  });
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6 md:p-12">
+      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow p-6 md:p-10">
+        <header className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold">PoemShare — Şiirlerini Paylaş</h1>
+            <p className="text-sm text-gray-500">Hesap aç, onay al, paylaş. Yorumlar açık.</p>
+          </div>
+          <div className="text-right">
+            {currentUser ? (
+              <div>
+                <div className="text-sm">Giriş: <strong>{currentUser.username}</strong> {currentUser.approved ? <span className="ml-2 text-green-600">(Onaylı)</span> : <span className="ml-2 text-yellow-600">(Onay bekliyor)</span>}</div>
+                <div className="mt-2 flex gap-2 justify-end">
+                  <button className="px-3 py-1 border rounded" onClick={() => { setView("new"); }}>Yeni Şiir</button>
+                  <button className="px-3 py-1 border rounded" onClick={logout}>Çıkış</button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <LoginRegister onRegister={register} onLogin={login} />
+                <div className="mt-2 text-xs text-gray-400">Not: Sahip, Yönetici panelinde hesap onaylarını yönetir.</div>
+              </div>
+            )}
+          </div>
+        </header>
+
+        <main>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+            <div className="flex items-center gap-2">
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Şiirlerde ara..." className="border rounded px-3 py-2" />
+              <button className="px-3 py-2 border rounded" onClick={() => { setSearch(""); }}>Temizle</button>
+            </div>
+            <div className="flex gap-2">
+              <button className="px-3 py-2 border rounded" onClick={() => setView("home")}>Tüm Şiirler</button>
+              <button className="px-3 py-2 border rounded" onClick={() => setView("about")}>Hakkında</button>
+              <button className="px-3 py-2 border rounded" onClick={() => setView("admin")}>Yönetici</button>
+            </div>
+          </div>
+
+          {view === "about" && (
+            <div className="prose max-w-none mb-6">
+              <h2>Hakkında</h2>
+              <p>Bu demo uygulama front-end (localStorage) ile çalışır. Gerçek kullanıcı yönetimi, güvenlik ve saklama için bir sunucu gereklidir.</p>
+              <p>İsteklerinize göre backend + veritabanı içeren bir sürüm de hazırlayabilirim.</p>
+            </div>
+          )}
+
+          {view === "admin" && (
+            <AdminPanel
+              state={state}
+              adminSession={adminSession}
+              adminSecretInput={adminSecretInput}
+              setAdminSecretInput={setAdminSecretInput}
+              setAdminPass={setAdminPass}
+              adminLogin={adminLogin}
+              approveUser={approveUser}
+              deletePoem={deletePoem}
+              deleteComment={deleteComment}
+            />
+          )}
+
+          {view === "new" && (
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold mb-2">Yeni Şiir Paylaş</h2>
+              <div className="grid gap-2">
+                <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Başlık" className="border rounded px-3 py-2" />
+                <textarea value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} rows={8} placeholder="Şiirini buraya yaz..." className="border rounded px-3 py-2" />
+                <div className="flex gap-2">
+                  <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={() => createPoem(form.title, form.body)}>Paylaş</button>
+                  <button className="px-4 py-2 border rounded" onClick={() => setView("home")}>İptal</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {view === "home" && (
+            <div className="space-y-6">
+              {filteredPoems.length === 0 && <div className="text-gray-500">Henüz şiir yok.</div>}
+              {filteredPoems.map((p) => (
+                <article key={p.id} className="border rounded p-4">
+                  <header className="flex justify-between items-start">
+                    <div>
+                      <h3 className="text-lg font-semibold">{p.title}</h3>
+                      <div className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleString()}</div>
+                    </div>
+                    <div className="text-right text-sm">
+                      <div>Yazar: {users.find((u) => u.id === p.authorId)?.username || "Bilinmiyor"}</div>
+                      {(adminSession || (currentUser && currentUser.isOwner)) && (
+                        <div className="mt-2">
+                          <button className="px-2 py-1 border rounded text-xs" onClick={() => deletePoem(p.id)}>Sil</button>
+                        </div>
+                      )}
+                    </div>
+                  </header>
+                  <div className="mt-3 whitespace-pre-wrap">{p.body}</div>
+
+                  <section className="mt-4 border-t pt-3">
+                    <h4 className="font-medium">Yorumlar ({p.comments.length})</h4>
+                    <div className="mt-2 space-y-2">
+                      {p.comments.map((c) => (
+                        <div key={c.id} className="flex justify-between">
+                          <div>
+                            <div className="text-sm"><strong>{c.authorName || users.find((u) => u.id === c.authorId)?.username || "Anon"}</strong> <span className="text-xs text-gray-400">{new Date(c.createdAt).toLocaleString()}</span></div>
+                            <div className="text-sm whitespace-pre-wrap">{c.text}</div>
+                          </div>
+                          {(adminSession || (currentUser && currentUser.isOwner)) && (
+                            <div className="pl-4">
+                              <button className="px-2 py-1 border rounded text-xs" onClick={() => deleteComment(p.id, c.id)}>Sil</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <div className="mt-2 flex gap-2">
+                        <input value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} placeholder="Yorum yaz..." className="flex-1 border rounded px-3 py-2" />
+                        <button className="px-3 py-2 border rounded" onClick={() => addComment(p.id, form.comment)}>Gönder</button>
+                      </div>
+                    </div>
+                  </section>
+                </article>
+              ))}
+            </div>
+          )}
+        </main>
+
+        <footer className="mt-8 text-sm text-gray-400 text-center">Bu demo front-end tarafından yönetilir — gerçek site için backend entegrasyonu gerekir.</footer>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- Subcomponents ----------------
+function LoginRegister({ onRegister, onLogin }) {
+  const [username, setUsername] = useState("");
+  return (
+    <div className="flex gap-2">
+      <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Kullanıcı adı" className="border rounded px-3 py-2" />
+      <button className="px-3 py-2 border rounded" onClick={() => onLogin(username)}>Giriş</button>
+      <button className="px-3 py-2 bg-green-600 text-white rounded" onClick={() => onRegister(username)}>Kayıt</button>
+    </div>
+  );
+}
+
+function AdminPanel({ state, adminSession, adminSecretInput, setAdminSecretInput, setAdminPass, adminLogin, approveUser, deletePoem, deleteComment }) {
+  return (
+    <div className="mb-6">
+      <h2 className="text-xl font-semibold mb-3">Yönetici Paneli</h2>
+      {!state.adminPass && (
+        <div className="mb-4">
+          <div className="text-sm mb-2">Henüz admin parolası ayarlı değil. Site sahibi bir parola belirlemeli (çok basit parolalar kullanmayın; bu bir demo).</div>
+          <AdminSetPass onSet={setAdminPass} />
+        </div>
+      )}
+
+      {!adminSession ? (
+        <div className="mb-4">
+          <div className="text-sm mb-2">Yönetici girişi:</div>
+          <div className="flex gap-2">
+            <input value={adminSecretInput} onChange={(e) => setAdminSecretInput(e.target.value)} placeholder="Yönetici parolası" className="border rounded px-3 py-2" />
+            <button className="px-3 py-2 border rounded" onClick={() => adminLogin(adminSecretInput)}>Giriş</button>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4 text-green-600">Yönetici oturumu açık — hesap onaylayabilir, silebilirsiniz.</div>
+      )}
+
+      <section className="mb-4">
+        <h3 className="font-medium">Hesaplar</h3>
+        <div className="mt-2 space-y-2">
+          {state.users.map((u) => (
+            <div className="flex items-center justify-between border rounded p-2" key={u.id}>
+              <div>
+                <div className="font-medium">{u.username} {u.isOwner && <span className="text-xs text-blue-600">(Sahip)</span>}</div>
+                <div className="text-xs text-gray-500">{u.approved ? "Onaylı" : "Onay bekliyor"}</div>
+              </div>
+              <div className="flex gap-2">
+                <button className="px-2 py-1 border rounded" onClick={() => approveUser(u.id, !u.approved)}>{u.approved ? "Reddet" : "Onayla"}</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h3 className="font-medium">Şiirler (silebilirsiniz)</h3>
+        <div className="mt-2 space-y-2">
+          {state.poems.map((p) => (
+            <div key={p.id} className="border rounded p-2">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="font-semibold">{p.title}</div>
+                  <div className="text-xs text-gray-500">{p.body.slice(0, 80)}{p.body.length>80?"...":""}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button className="px-2 py-1 border rounded" onClick={() => deletePoem(p.id)}>Sil</button>
+                </div>
+              </div>
+              <div className="mt-2 text-xs">Yorumlar: {p.comments.length}</div>
+              <div className="mt-2 space-y-1">
+                {p.comments.map((c) => (
+                  <div key={c.id} className="flex justify-between">
+                    <div className="text-xs">{c.authorName || 'Anon'}: {c.text.slice(0,60)}{c.text.length>60?"...":""}</div>
+                    <div><button className="px-2 py-1 border rounded text-xs" onClick={() => deleteComment(p.id, c.id)}>Sil</button></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AdminSetPass({ onSet }) {
+  const [pass, setPass] = useState("");
+  return (
+    <div className="flex gap-2">
+      <input value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Yeni admin parolası" className="border rounded px-3 py-2" />
+      <button className="px-3 py-2 bg-purple-600 text-white rounded" onClick={() => { onSet(pass); setPass(""); }}>Kaydet</button>
+    </div>
+  );
+}
